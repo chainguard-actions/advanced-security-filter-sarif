@@ -1,0 +1,71 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "TestTool",
+          "version": "1.0.0",
+          "rules": [
+            {
+              "id": "TEST001",
+              "name": "TestRule001"
+            },
+            {
+              "id": "TEST002",
+              "name": "TestRule002"
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "TEST001",
+          "message": {
+            "text": "Test finding in src"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main.py"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "TEST002",
+          "message": {
+            "text": "Test finding in test"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "test/test_main.py"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "TEST001",
+          "message": {
+            "text": "Another finding in lib"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "lib/utils.py"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

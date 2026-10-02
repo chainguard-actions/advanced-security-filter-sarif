@@ -1,0 +1,60 @@
+name: Test exclusion pattern
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          patterns: "-test/**"
+          input: "${{ github.workspace }}/tests/fixtures/sample.sarif"
+          output: "${{ github.workspace }}/output.sarif"
+
+      - name: Assert output file exists
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/output.sarif" ]; then
+            echo "FAIL: output SARIF file was not created"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+
+      - name: Assert test/ results are excluded
+        run: |
+          # The exclusion pattern "-test/**" removes results in test/
+          # Original has 3 results: src/main.py, test/test_main.py, lib/utils.py
+          # After exclusion: src/main.py and lib/utils.py remain (2 results)
+          RESULT_COUNT=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output.sarif') as f:
+              s = json.load(f)
+          results = s['runs'][0]['results']
+          print(len(results))
+          ")
+          echo "Result count: $RESULT_COUNT"
+          if [ "$RESULT_COUNT" != "2" ]; then
+            echo "FAIL: expected 2 results (src/main.py and lib/utils.py), got $RESULT_COUNT"
+            exit 1
+          fi
+          echo "PASS: correct number of results after exclusion"
+
+      - name: Assert test/ result is not present
+        run: |
+          URIS=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output.sarif') as f:
+              s = json.load(f)
+          results = s['runs'][0]['results']
+          for r in results:
+              for l in r['locations']:
+                  print(l['physicalLocation']['artifactLocation']['uri'])
+          ")
+          echo "Remaining URIs: $URIS"
+          if echo "$URIS" | grep -q "test/test_main.py"; then
+            echo "FAIL: test/test_main.py should have been excluded"
+            exit 1
+          fi
+          echo "PASS: test/ result correctly excluded"

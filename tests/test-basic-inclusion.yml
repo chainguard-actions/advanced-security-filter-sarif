@@ -1,0 +1,60 @@
+name: Test basic inclusion pattern
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          # First exclude all, then include only src/ — subsequent lines override earlier ones
+          patterns: |
+            -**
+            src/**
+          input: "${{ github.workspace }}/tests/fixtures/sample.sarif"
+          output: "${{ github.workspace }}/output.sarif"
+
+      - name: Assert output file exists
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/output.sarif" ]; then
+            echo "FAIL: output SARIF file was not created"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+
+      - name: Assert only src/ results are kept
+        run: |
+          # Pattern "-**" excludes all, then "src/**" re-includes only src/ results
+          # Expected: only src/main.py remains (1 result)
+          RESULT_COUNT=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output.sarif') as f:
+              s = json.load(f)
+          results = s['runs'][0]['results']
+          print(len(results))
+          ")
+          echo "Result count: $RESULT_COUNT"
+          if [ "$RESULT_COUNT" != "1" ]; then
+            echo "FAIL: expected 1 result (only src/main.py), got $RESULT_COUNT"
+            exit 1
+          fi
+          echo "PASS: correct number of results"
+
+      - name: Assert the kept result is from src/
+        run: |
+          URI=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output.sarif') as f:
+              s = json.load(f)
+          results = s['runs'][0]['results']
+          print(results[0]['locations'][0]['physicalLocation']['artifactLocation']['uri'])
+          ")
+          echo "URI: $URI"
+          if [ "$URI" != "src/main.py" ]; then
+            echo "FAIL: expected src/main.py, got $URI"
+            exit 1
+          fi
+          echo "PASS: correct URI retained"

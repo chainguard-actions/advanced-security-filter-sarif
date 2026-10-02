@@ -1,0 +1,63 @@
+name: Test rule-specific pattern
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          # First exclude all, then include only results matching rule TEST001
+          # Subsequent lines override earlier ones; default is include all
+          patterns: |
+            -**
+            **:TEST001
+          input: "${{ github.workspace }}/tests/fixtures/sample.sarif"
+          output: "${{ github.workspace }}/output.sarif"
+
+      - name: Assert output file exists
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/output.sarif" ]; then
+            echo "FAIL: output SARIF file was not created"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+
+      - name: Assert only TEST001 results are kept
+        run: |
+          # Pattern "-**" excludes all, then "**:TEST001" re-includes only TEST001 results
+          # Original: src/main.py (TEST001), test/test_main.py (TEST002), lib/utils.py (TEST001)
+          # Expected: 2 results (src/main.py and lib/utils.py)
+          RESULT_COUNT=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output.sarif') as f:
+              s = json.load(f)
+          results = s['runs'][0]['results']
+          print(len(results))
+          ")
+          echo "Result count: $RESULT_COUNT"
+          if [ "$RESULT_COUNT" != "2" ]; then
+            echo "FAIL: expected 2 results (TEST001 only), got $RESULT_COUNT"
+            exit 1
+          fi
+          echo "PASS: correct number of results"
+
+      - name: Assert all kept results have ruleId TEST001
+        run: |
+          RULE_IDS=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output.sarif') as f:
+              s = json.load(f)
+          results = s['runs'][0]['results']
+          for r in results:
+              print(r['ruleId'])
+          ")
+          echo "Rule IDs in output: $RULE_IDS"
+          if echo "$RULE_IDS" | grep -q "TEST002"; then
+            echo "FAIL: TEST002 result should have been filtered out"
+            exit 1
+          fi
+          echo "PASS: only TEST001 results retained"

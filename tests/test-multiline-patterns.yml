@@ -1,0 +1,74 @@
+name: Test multiline patterns
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          # Include everything, then exclude test/ directory
+          # The action uses --split-lines so newline-separated patterns work
+          patterns: |
+            **
+            -test/**
+          input: "${{ github.workspace }}/tests/fixtures/sample.sarif"
+          output: "${{ github.workspace }}/output.sarif"
+
+      - name: Assert output file exists
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/output.sarif" ]; then
+            echo "FAIL: output SARIF file was not created"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+
+      - name: Assert correct results after multiline patterns
+        run: |
+          # "**" includes all, then "-test/**" excludes test/ results
+          # Expected: src/main.py and lib/utils.py remain (2 results)
+          RESULT_COUNT=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output.sarif') as f:
+              s = json.load(f)
+          results = s['runs'][0]['results']
+          print(len(results))
+          ")
+          echo "Result count: $RESULT_COUNT"
+          if [ "$RESULT_COUNT" != "2" ]; then
+            echo "FAIL: expected 2 results, got $RESULT_COUNT"
+            exit 1
+          fi
+          echo "PASS: correct number of results"
+
+      - name: Assert test/ result is excluded and others remain
+        run: |
+          URIS=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output.sarif') as f:
+              s = json.load(f)
+          results = s['runs'][0]['results']
+          uris = []
+          for r in results:
+              for l in r['locations']:
+                  uris.append(l['physicalLocation']['artifactLocation']['uri'])
+          print('\n'.join(uris))
+          ")
+          echo "Remaining URIs:"
+          echo "$URIS"
+          if echo "$URIS" | grep -q "test/test_main.py"; then
+            echo "FAIL: test/test_main.py should have been excluded"
+            exit 1
+          fi
+          if ! echo "$URIS" | grep -q "src/main.py"; then
+            echo "FAIL: src/main.py should be present"
+            exit 1
+          fi
+          if ! echo "$URIS" | grep -q "lib/utils.py"; then
+            echo "FAIL: lib/utils.py should be present"
+            exit 1
+          fi
+          echo "PASS: multiline patterns applied correctly"
