@@ -1,0 +1,79 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "TestTool",
+          "rules": [
+            {
+              "id": "rule/001",
+              "name": "TestRule001",
+              "defaultConfiguration": {
+                "level": "error"
+              }
+            },
+            {
+              "id": "rule/002",
+              "name": "TestRule002",
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "rule/001",
+          "level": "error",
+          "message": {
+            "text": "Error in src file"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main.py"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "rule/002",
+          "level": "warning",
+          "message": {
+            "text": "Warning in test file"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/test_main.py"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "rule/001",
+          "level": "error",
+          "message": {
+            "text": "Error in vendor file"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "vendor/lib.py"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+name: Test security severity category filter - keep only critical results
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create input SARIF fixture
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/test-fixtures"
+          cat > "$GITHUB_WORKSPACE/test-fixtures/severity.sarif" << 'SARIF_EOF'
+          {
+            "version": "2.1.0",
+            "runs": [{
+              "tool": {"driver": {"name": "TestTool", "rules": [
+                {"id": "rule/critical", "properties": {"security-severity": "9.5"},
+                 "defaultConfiguration": {"level": "error"}},
+                {"id": "rule/low", "properties": {"security-severity": "2.0"},
+                 "defaultConfiguration": {"level": "warning"}}
+              ]}},
+              "results": [
+                {"ruleId": "rule/critical", "level": "error", "message": {"text": "Critical issue"},
+                 "locations": [{"physicalLocation": {"artifactLocation": {"uri": "src/auth.py"}}}]},
+                {"ruleId": "rule/low", "level": "warning", "message": {"text": "Low severity issue"},
+                 "locations": [{"physicalLocation": {"artifactLocation": {"uri": "src/utils.py"}}}]}
+              ]
+            }]
+          }
+          SARIF_EOF
+
+      - id: action
+        uses: .
+        with:
+          patterns: "**"
+          input: "${{ github.workspace }}/test-fixtures/severity.sarif"
+          output: "${{ github.workspace }}/output-security-severity.sarif"
+          severity: "critical"
+
+      - name: Assert output file was created
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/output-security-severity.sarif" ]; then
+            echo "FAIL: output SARIF file was not created"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+
+      - name: Assert only critical security severity result remains (1 out of 2)
+        run: |
+          COUNT=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output-security-severity.sarif') as f:
+              s = json.load(f)
+          total = sum(len(r.get('results', [])) for r in s.get('runs', []))
+          print(total)
+          ")
+          echo "Result count: $COUNT"
+          if [ "$COUNT" != "1" ]; then
+            echo "FAIL: expected 1 critical result, got $COUNT"
+            exit 1
+          fi
+          echo "PASS: 1 critical result remains"
+
+      - name: Assert the remaining result is the critical one (rule/critical)
+        run: |
+          RULE_ID=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output-security-severity.sarif') as f:
+              s = json.load(f)
+          for run in s.get('runs', []):
+              for result in run.get('results', []):
+                  print(result.get('ruleId', ''))
+          ")
+          echo "Rule ID: $RULE_ID"
+          if [ "$RULE_ID" != "rule/critical" ]; then
+            echo "FAIL: expected rule/critical, got $RULE_ID"
+            exit 1
+          fi
+          echo "PASS: remaining result is the critical rule"

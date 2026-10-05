@@ -1,14 +1,129 @@
-# advanced-security/filter-sarif
+# filter-sarif
 
-Filter SARIF results by path
+Takes a SARIF file and a list of inclusion and exclusion patterns as input and removes alerts from the SARIF file according to those patterns.
 
-Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at [https://github.com/advanced-security/filter-sarif](https://github.com/advanced-security/filter-sarif).
+# Example
 
-## Versions
+The following example removes all alerts from all Java test files:
 
-| Version | Tag | Upstream commit |
-|---------|-----|-----------------|
-| v1 | [`v1`](https://github.com/chainguard-actions/advanced-security-filter-sarif/tree/v1) | [`f3b8118`](https://github.com/advanced-security/filter-sarif/commit/f3b8118a9349d88f7b1c0c488476411145b6270d) |
+```yaml
+name: "Filter SARIF"
+on:
+  push:
+    branches: [master]
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'java' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
+        output: sarif-results
+        upload: failure-only
+
+    - name: filter-sarif
+      uses: advanced-security/filter-sarif@v1
+      with:
+        patterns: |
+          +**/*.java
+          -**/*Test*.java
+        severity: high,critical
+        input: sarif-results/java.sarif
+        output: sarif-results/java.sarif
+
+    - name: Upload SARIF
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: sarif-results/java.sarif
+
+    - name: Upload loc as a Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sarif-results
+        path: sarif-results
+        retention-days: 1
+```
+
+Note how we provided `upload: failure-only` and `output: sarif-results` to the `analyze` action. That way we can filter the SARIF with the `filter-sarif` action before uploading it via `upload-sarif`. Diagnostic output is still uploaded and visible on the [tool status page](https://docs.github.com/en/code-security/code-scanning/managing-your-code-scanning-configuration/about-the-tool-status-page) if the run fails. Finally, we also attach the resulting SARIF file to the build, which is convenient for later inspection.
+
+# Patterns
+
+Each pattern line is of the form:
+```
+[+/-]<file pattern>[:<rule pattern>]
+```
+
+for example:
+```
+-**/*Test*.java:**               # exclusion pattern: remove all alerts from all Java test files
+-**/*Test*.java                  # ditto, short form of the line above
++**/*.java:java/sql-injection    # inclusion pattern: This line has precedence over the first two
+                                 # and thus allows alerts of type "java/sql-injection"
+**/*.java:java/sql-injection     # ditto, the "+" in inclusion patterns is optional
+**                               # allow all alerts in all files (reverses all previous lines)
+```
+
+A minimal config to allow only files in the path `myproject/` is:
+
+```
+-**/*                            # exclusion pattern: DENY ALL
+myproject/**/*                   # inclusion pattern: allows alerts in the path 'myproject/'
+```
+
+* The path separator character in patterns is always `/`, independent of the platform the code is running on and independent of the paths in the SARIF file.
+* `*` matches any character, except a path separator
+* `**` matches any character and is only allowed between path separators, e.g. `/**/file.txt`, `**/file.txt` or `**`. NOT allowed: `**.txt`, `/etc**`
+* The rule pattern is optional. If omitted, it will apply to alerts of all types.
+* Subsequent lines override earlier ones. By default all alerts are included.
+* If you need to use the literals `+`, `-`, `\` or `:` in your pattern, you can escape them with `\`, e.g. `\-this/is/an/inclusion/file/pattern\:with-a-semicolon:and/a/rule/pattern/with/a/\\/backslash`. For `+` and `-`, this is only necessary if they appear at the beginning of the pattern line.
+
+# Severity
+
+The optional `severity` input allows you to filter alerts by severity level. It accepts a comma-separated list of severity values. Only alerts matching at least one of the specified values will be kept. If omitted, all severity levels are included.
+
+Two kinds of severity values are supported:
+
+* **SARIF result level**: `error`, `warning`, `note`, `none` — matched against the `level` field of each result.
+* **Security severity category**: `critical`, `high`, `medium`, `low` — derived from the numeric `security-severity` property on rule metadata, using the standard mapping:
+  * `critical`: score ≥ 9.0
+  * `high`: score ≥ 7.0
+  * `medium`: score ≥ 4.0
+  * `low`: score > 0.0
+
+You can combine both kinds in a single value, for example `severity: error,high,critical`.
+
+Example usage:
+
+```yaml
+    - name: filter-sarif
+      uses: advanced-security/filter-sarif@v1
+      with:
+        patterns: |
+          +**/*.java
+        severity: high,critical
+        input: sarif-results/java.sarif
+        output: sarif-results/java.sarif
+```
 
 ## Privacy
 

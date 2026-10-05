@@ -1,0 +1,84 @@
+name: Test severity filter - keep only error level results
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create input SARIF fixture
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/test-fixtures"
+          cat > "$GITHUB_WORKSPACE/test-fixtures/basic.sarif" << 'SARIF_EOF'
+          {
+            "version": "2.1.0",
+            "runs": [{
+              "tool": {"driver": {"name": "TestTool", "rules": [
+                {"id": "rule/001", "defaultConfiguration": {"level": "error"}},
+                {"id": "rule/002", "defaultConfiguration": {"level": "warning"}}
+              ]}},
+              "results": [
+                {"ruleId": "rule/001", "level": "error", "message": {"text": "Error in src"},
+                 "locations": [{"physicalLocation": {"artifactLocation": {"uri": "src/main.py"}}}]},
+                {"ruleId": "rule/002", "level": "warning", "message": {"text": "Warning in tests"},
+                 "locations": [{"physicalLocation": {"artifactLocation": {"uri": "tests/test_main.py"}}}]},
+                {"ruleId": "rule/001", "level": "error", "message": {"text": "Error in vendor"},
+                 "locations": [{"physicalLocation": {"artifactLocation": {"uri": "vendor/lib.py"}}}]}
+              ]
+            }]
+          }
+          SARIF_EOF
+
+      - id: action
+        uses: .
+        with:
+          patterns: "**"
+          input: "${{ github.workspace }}/test-fixtures/basic.sarif"
+          output: "${{ github.workspace }}/output-severity.sarif"
+          severity: "error"
+
+      - name: Assert output file was created
+        run: |
+          if [ ! -f "$GITHUB_WORKSPACE/output-severity.sarif" ]; then
+            echo "FAIL: output SARIF file was not created"
+            exit 1
+          fi
+          echo "PASS: output file exists"
+
+      - name: Assert only error-level results remain (2 out of 3)
+        run: |
+          COUNT=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output-severity.sarif') as f:
+              s = json.load(f)
+          total = sum(len(r.get('results', [])) for r in s.get('runs', []))
+          print(total)
+          ")
+          echo "Result count: $COUNT"
+          if [ "$COUNT" != "2" ]; then
+            echo "FAIL: expected 2 error-level results, got $COUNT"
+            exit 1
+          fi
+          echo "PASS: 2 error-level results remain"
+
+      - name: Assert all remaining results are error level
+        run: |
+          NON_ERROR=$(python3 -c "
+          import json
+          with open('$GITHUB_WORKSPACE/output-severity.sarif') as f:
+              s = json.load(f)
+          count = 0
+          for run in s.get('runs', []):
+              for result in run.get('results', []):
+                  if result.get('level', 'warning') != 'error':
+                      count += 1
+          print(count)
+          ")
+          echo "Non-error result count: $NON_ERROR"
+          if [ "$NON_ERROR" != "0" ]; then
+            echo "FAIL: expected all results to be error level, found $NON_ERROR non-error results"
+            exit 1
+          fi
+          echo "PASS: all remaining results are error level"
