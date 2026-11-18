@@ -32,10 +32,10 @@ runs:
           "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
     - name: filter
       env:
-        INPUT: ${{ inputs.input }}
-        OUTPUT: ${{ inputs.output }}
+        INPUT_FILE: ${{ inputs.input }}
+        OUTPUT_FILE: ${{ inputs.output }}
         PATTERNS: ${{ inputs.patterns }}
       run: |
         unset LD_PRELOAD
-        python3 "$GITHUB_ACTION_PATH/filter_sarif.py" --input "$INPUT" --output "$OUTPUT" --split-lines -- "$PATTERNS"
+        python3 "$GITHUB_ACTION_PATH/filter_sarif.py" --input "$INPUT_FILE" --output "$OUTPUT_FILE" --split-lines -- "$PATTERNS"
       shell: bash
